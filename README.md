@@ -47,6 +47,10 @@ python bot.py
 ```
 /forward chat_id start_id end_id
 ```
+Example:
+```
+/forward -1002540899531 1 70056
+```
 
 Where:
 - `chat_id`: Source chat ID (can be negative for channels/groups)

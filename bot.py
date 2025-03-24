@@ -14,7 +14,7 @@ API_ID = config.get("Telegram", "api_id")
 API_HASH = config.get("Telegram", "api_hash")
 BOT_TOKEN = config.get("Telegram", "bot_token")
 CLONE = config.getboolean("Telegram", "clone")
-BATCH_SIZE = config.getint("Telegram", "BATCH_SIZE")
+BATCH_SIZE = config.getint("Telegram", "batch_size")
 
 client = TelegramClient("backup_bot", API_ID, API_HASH)
 

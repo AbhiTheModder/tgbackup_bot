@@ -14,6 +14,7 @@ API_ID = config.get("Telegram", "api_id")
 API_HASH = config.get("Telegram", "api_hash")
 BOT_TOKEN = config.get("Telegram", "bot_token")
 CLONE = config.getboolean("Telegram", "clone")
+BATCH_SIZE = config.getint("Telegram", "BATCH_SIZE")
 
 client = TelegramClient("backup_bot", API_ID, API_HASH)
 
@@ -53,12 +54,10 @@ async def forward_messages(event):
             message_ids = list(range(start_id, end_id + 1))
             total_messages = len(message_ids)
 
-            # Forward messages in batches
-            batch_size = 100
             messages_forwarded = 0
 
-            for i in range(0, len(message_ids), batch_size):
-                batch_ids = message_ids[i : i + batch_size]
+            for i in range(0, len(message_ids), BATCH_SIZE):
+                batch_ids = message_ids[i : i + BATCH_SIZE]
                 # This is workaround for bots since they can't directly fetch whole chat history from a channel/group
                 messages = await client.get_messages(peer, ids=batch_ids)
 

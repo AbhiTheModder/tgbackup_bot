@@ -27,6 +27,7 @@ A Telegram bot that helps you forward messages from one chat to another in batch
    api_hash = YOUR_API_HASH
    bot_token = YOUR_BOT_TOKEN
    clone = True # Set to False to disable message cloning
+   batch_size = 100 # Number of messages to forward per batch
    ```
    Message cloning means that the bot will send a copy of the message to the destination chat, preserving the original message's content, without author's tag/quote.
 

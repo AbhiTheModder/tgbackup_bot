@@ -43,7 +43,7 @@ async def forward_messages(event):
         await event.respond("Please use the format: /forward chat_id start_id end_id")
         return
 
-    chat_id, start_id, end_id = map(int, args[1:])
+    chat_id, start_id, end_id = map(int, args[1:4])
     peer = resolve_peer(chat_id)
 
     try:

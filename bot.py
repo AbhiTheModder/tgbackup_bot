@@ -1,7 +1,8 @@
-from telethon import TelegramClient, events
-from telethon.tl.types import PeerChannel, PeerChat, PeerUser, MessageService
 import logging
 from configparser import ConfigParser
+
+from telethon import TelegramClient, events
+from telethon.tl.types import MessageService, PeerChannel, PeerChat, PeerUser
 
 logging.basicConfig(
     format="[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s", level=logging.WARNING
@@ -36,16 +37,19 @@ async def forward_messages(event):
             )
             return
 
-        chat_id = int(args[1])
-        start_id = int(args[2])
-        end_id = int(args[3])
+        try:
+            chat_id, start_id, end_id = map(int, args[1:4])
+        except ValueError:
+            await event.respond("Invalid chat_id, start_id, or end_id")
+            return
+
+        logging.debug(f"Chat ID: {chat_id}, Start ID: {start_id}, End ID: {end_id}")
 
         try:
             if chat_id < 0:
-                if str(chat_id).startswith("-100"):
-                    peer = PeerChannel(int(str(chat_id)[4:]))
-                else:
-                    peer = PeerChat(-chat_id)
+                peer = PeerChannel(chat_id)
+            elif chat_id > 0:
+                peer = PeerChat(int("-100" + str(chat_id)))
             else:
                 peer = PeerUser(chat_id)
 
@@ -53,6 +57,7 @@ async def forward_messages(event):
 
             message_ids = list(range(start_id, end_id + 1))
             total_messages = len(message_ids)
+            logging.debug(f"Total messages to forward: {len(message_ids)}")
 
             messages_forwarded = 0
 
@@ -60,6 +65,8 @@ async def forward_messages(event):
                 batch_ids = message_ids[i : i + BATCH_SIZE]
                 # This is workaround for bots since they can't directly fetch whole chat history from a channel/group
                 messages = await client.get_messages(peer, ids=batch_ids)
+                logging.debug(f"Fetched {len(messages)} messages in this batch")
+                logging.debug(f"Messages: {messages}")
 
                 valid_messages = [
                     msg

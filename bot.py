@@ -1,14 +1,17 @@
 import asyncio
 import logging
+import signal
 from configparser import ConfigParser
 
-from telethon import TelegramClient, events
-from telethon.tl.custom.message import Message
-from telethon.tl.types import MessageService, PeerChannel
+from pyrogram import Client, filters
+from pyrogram.enums import ChatType
+from pyrogram.types import Message
 
+STOP_EVENT = asyncio.Event()
 logging.basicConfig(
     format="[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s", level=logging.WARNING
 )
+signal.signal(signal.SIGINT, lambda _, __: STOP_EVENT.set())
 
 config = ConfigParser()
 config.read("config.ini")
@@ -20,22 +23,22 @@ CLONE = config.getboolean("Telegram", "clone")
 BATCH_SIZE = config.getint("Telegram", "batch_size")
 WITH_FORUM = config.getboolean("Telegram", "with_forum")
 
-client = TelegramClient("backup_bot", API_ID, API_HASH)
+client = Client("backup_bot", API_ID, API_HASH, bot_token=BOT_TOKEN)
 
 
-@client.on(events.NewMessage(pattern="/start"))
-async def start_handler(event):
-    await event.respond(
+@client.on_message(filters.command("start"))
+async def start_handler(_: Client, message: Message):
+    await message.reply(
         "Hello! Send me a message in this format:\n/forward chat_id start_id end_id"
     )
 
 
-@client.on(events.NewMessage(pattern="/forward"))
-async def forward_messages(event: Message):
+@client.on_message(filters.command("forward"))
+async def forward_messages(client: Client, message: Message):
     try:
-        args = event.message.text.split()
+        args = message.text.split()
         if len(args) != 4:
-            await event.respond(
+            await message.reply(
                 "Please use the format: /forward chat_id start_id end_id"
             )
             return
@@ -43,31 +46,26 @@ async def forward_messages(event: Message):
         try:
             chat_id, start_id, end_id = map(int, args[1:4])
         except ValueError:
-            await event.respond("Invalid chat_id, start_id, or end_id")
+            await message.reply("Invalid chat_id, start_id, or end_id")
             return
 
         logging.debug(f"Chat ID: {chat_id}, Start ID: {start_id}, End ID: {end_id}")
 
         try:
-            if chat_id < 0:
-                peer = PeerChannel(chat_id)
-            elif chat_id > 0:
-                peer = PeerChannel(int("-100" + str(chat_id)))
+            if str(chat_id).startswith("-100"):
+                peer = int(chat_id)
             else:
-                await event.respond(
-                    "[ERROR] Invalid chat ID: 0 is not a valid chat, group, or channel identifier."
-                )
-                return
+                peer = int("-100" + str(chat_id))
             if WITH_FORUM:
-                ch = await client.get_entity(peer)
+                ch = await client.get_chat(peer)
 
-                if event.chat.forum != ch.forum:  # type: ignore
-                    await event.respond(
+                if ch.type == ChatType.FORUM and message.chat.type != ch.type:
+                    await message.reply(
                         "Both chats should have either forums(topics) enabled or disabled, however they are not."
                     )
                     return
 
-            status_msg = await event.respond("Starting to forward messages...")
+            status_msg = await message.reply("Starting to forward messages...")
 
             message_ids = list(range(start_id, end_id + 1))
             total_messages = len(message_ids)
@@ -75,32 +73,42 @@ async def forward_messages(event: Message):
 
             messages_forwarded = 0
 
-            is_group = event.is_group or event.is_channel
+            is_group = message.chat.type in [
+                ChatType.GROUP,
+                ChatType.SUPERGROUP,
+                ChatType.CHANNEL,
+            ]
             delay = 3 if is_group else 1
 
             for i in range(0, len(message_ids), BATCH_SIZE):
+                if STOP_EVENT.is_set():
+                    await status_msg.edit(
+                        f"[INFO] Forwarding interrupted! Successfully forwarded {messages_forwarded} messages before stopping."
+                    )
+                    return
                 batch_ids = message_ids[i : i + BATCH_SIZE]
                 # This is workaround for bots since they can't directly fetch whole chat history from a channel/group
-                messages = await client.get_messages(peer, ids=batch_ids)
+                messages = await client.get_messages(peer, batch_ids)
                 logging.debug(f"Fetched {len(messages)} messages in this batch")  # type: ignore
                 logging.debug(f"Messages: {messages}")
 
                 valid_messages = [
                     msg
                     for msg in messages  # type: ignore
-                    if msg is not None and not isinstance(msg, MessageService)
+                    if msg is not None and not msg.empty and not msg.service
                 ]
 
                 if valid_messages:
                     batch_fwd_count = 0
                     for msg in valid_messages:
+                        if STOP_EVENT.is_set():
+                            break
                         try:
                             await client.forward_messages(
-                                entity=event.chat_id,
-                                messages=msg,
-                                from_peer=peer,
+                                chat_id=message.chat.id,
+                                message_ids=msg.id,
+                                from_chat_id=peer,
                                 drop_author=CLONE,
-                                silent=True,
                             )
                             batch_fwd_count += 1
                         except Exception as e:
@@ -113,25 +121,32 @@ async def forward_messages(event: Message):
                         f"Forwarded {messages_forwarded} of {total_messages} messages..."
                     )
 
-            await status_msg.edit(
-                f"✅ Forwarding complete! Successfully forwarded {messages_forwarded} messages."
-            )
-            await status_msg.delete()
+            if not STOP_EVENT.is_set():
+                await status_msg.edit(
+                    f"✅ Forwarding complete! Successfully forwarded {messages_forwarded} messages."
+                )
+                await status_msg.delete()
+            else:
+                await status_msg.edit(
+                    f"[INFO] Forwarding interrupted! Successfully forwarded {messages_forwarded} messages before stopping."
+                )
 
         except Exception as e:
             logging.error(f"Error forwarding messages: {str(e)}")
             pass
 
     except ValueError:
-        await event.respond("Please provide valid numeric chat_id and message IDs")
+        await message.reply("Please provide valid numeric chat_id and message IDs")
 
 
-def main():
-    print("Starting bot...")
-    client.start(bot_token=BOT_TOKEN)
-    print("Bot is running...")
-    client.run_until_disconnected()
+async def main():
+    print("[INFO] Starting bot...")
+    await client.start()
+    print("[INFO] Bot started.")
+    await STOP_EVENT.wait()
+    await client.stop()
+    print("[INFO] Bot stopped.")
 
 
 if __name__ == "__main__":
-    main()
+    client.run(main())

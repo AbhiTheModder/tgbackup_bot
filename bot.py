@@ -4,7 +4,7 @@ from configparser import ConfigParser
 
 from telethon import TelegramClient, events
 from telethon.tl.custom.message import Message
-from telethon.tl.types import MessageService, PeerChannel, PeerChat
+from telethon.tl.types import MessageService, PeerChannel
 
 logging.basicConfig(
     format="[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s", level=logging.WARNING
@@ -18,6 +18,7 @@ API_HASH = config.get("Telegram", "api_hash")
 BOT_TOKEN = config.get("Telegram", "bot_token")
 CLONE = config.getboolean("Telegram", "clone")
 BATCH_SIZE = config.getint("Telegram", "batch_size")
+WITH_FORUM = config.getboolean("Telegram", "with_forum")
 
 client = TelegramClient("backup_bot", API_ID, API_HASH)
 
@@ -51,12 +52,20 @@ async def forward_messages(event: Message):
             if chat_id < 0:
                 peer = PeerChannel(chat_id)
             elif chat_id > 0:
-                peer = PeerChat(int("-100" + str(chat_id)))
+                peer = PeerChannel(int("-100" + str(chat_id)))
             else:
                 await event.respond(
                     "[ERROR] Invalid chat ID: 0 is not a valid chat, group, or channel identifier."
                 )
                 return
+            if WITH_FORUM:
+                ch = await client.get_entity(peer)
+
+                if event.chat.forum != ch.forum:  # type: ignore
+                    await event.respond(
+                        "Both chats should have either forums(topics) enabled or disabled, however they are not."
+                    )
+                    return
 
             status_msg = await event.respond("Starting to forward messages...")
 
@@ -73,12 +82,12 @@ async def forward_messages(event: Message):
                 batch_ids = message_ids[i : i + BATCH_SIZE]
                 # This is workaround for bots since they can't directly fetch whole chat history from a channel/group
                 messages = await client.get_messages(peer, ids=batch_ids)
-                logging.debug(f"Fetched {len(messages)} messages in this batch")
+                logging.debug(f"Fetched {len(messages)} messages in this batch")  # type: ignore
                 logging.debug(f"Messages: {messages}")
 
                 valid_messages = [
                     msg
-                    for msg in messages
+                    for msg in messages  # type: ignore
                     if msg is not None and not isinstance(msg, MessageService)
                 ]
 

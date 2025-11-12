@@ -1,7 +1,9 @@
+import asyncio
 import logging
 from configparser import ConfigParser
 
 from telethon import TelegramClient, events
+from telethon.tl.custom.message import Message
 from telethon.tl.types import MessageService, PeerChannel, PeerChat, PeerUser
 
 logging.basicConfig(
@@ -11,7 +13,7 @@ logging.basicConfig(
 config = ConfigParser()
 config.read("config.ini")
 
-API_ID = config.get("Telegram", "api_id")
+API_ID = int(config.get("Telegram", "api_id"))
 API_HASH = config.get("Telegram", "api_hash")
 BOT_TOKEN = config.get("Telegram", "bot_token")
 CLONE = config.getboolean("Telegram", "clone")
@@ -28,7 +30,7 @@ async def start_handler(event):
 
 
 @client.on(events.NewMessage(pattern="/forward"))
-async def forward_messages(event):
+async def forward_messages(event: Message):
     try:
         args = event.message.text.split()
         if len(args) != 4:
@@ -61,6 +63,9 @@ async def forward_messages(event):
 
             messages_forwarded = 0
 
+            is_group = event.is_group or event.is_channel
+            delay = 3 if is_group else 1
+
             for i in range(0, len(message_ids), BATCH_SIZE):
                 batch_ids = message_ids[i : i + BATCH_SIZE]
                 # This is workaround for bots since they can't directly fetch whole chat history from a channel/group
@@ -75,14 +80,23 @@ async def forward_messages(event):
                 ]
 
                 if valid_messages:
-                    await client.forward_messages(
-                        entity=event.chat_id,
-                        messages=valid_messages,
-                        from_peer=peer,
-                        drop_author=CLONE,
-                        silent=True,
-                    )
-                    messages_forwarded += len(valid_messages)
+                    batch_fwd_count = 0
+                    for msg in valid_messages:
+                        try:
+                            await client.forward_messages(
+                                entity=event.chat_id,
+                                messages=msg,
+                                from_peer=peer,
+                                drop_author=CLONE,
+                                silent=True,
+                            )
+                            batch_fwd_count += 1
+                        except Exception as e:
+                            logging.warning(f"Could not forward message {msg.id}: {e}")
+
+                        await asyncio.sleep(delay)
+
+                    messages_forwarded += batch_fwd_count
                     await status_msg.edit(
                         f"Forwarded {messages_forwarded} of {total_messages} messages..."
                     )

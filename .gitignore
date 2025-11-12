@@ -1,2 +1,4 @@
 config.ini
 *.session
+.envrc
+.direnv/

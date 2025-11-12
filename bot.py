@@ -4,7 +4,7 @@ from configparser import ConfigParser
 
 from telethon import TelegramClient, events
 from telethon.tl.custom.message import Message
-from telethon.tl.types import MessageService, PeerChannel, PeerChat, PeerUser
+from telethon.tl.types import MessageService, PeerChannel, PeerChat
 
 logging.basicConfig(
     format="[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s", level=logging.WARNING
@@ -53,7 +53,10 @@ async def forward_messages(event: Message):
             elif chat_id > 0:
                 peer = PeerChat(int("-100" + str(chat_id)))
             else:
-                peer = PeerUser(chat_id)
+                await event.respond(
+                    "[ERROR] Invalid chat ID: 0 is not a valid chat, group, or channel identifier."
+                )
+                return
 
             status_msg = await event.respond("Starting to forward messages...")
 

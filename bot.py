@@ -5,7 +5,8 @@ from configparser import ConfigParser
 
 from pyrogram import Client, filters
 from pyrogram.enums import ChatType
-from pyrogram.types import Message
+from pyrogram.errors import ChatWriteForbidden
+from pyrogram.types import Chat, Message
 
 STOP_EVENT = asyncio.Event()
 logging.basicConfig(
@@ -21,9 +22,32 @@ API_HASH = config.get("Telegram", "api_hash")
 BOT_TOKEN = config.get("Telegram", "bot_token")
 CLONE = config.getboolean("Telegram", "clone")
 BATCH_SIZE = config.getint("Telegram", "batch_size")
+
+AUTO_BACKUP = config.getboolean("Telegram", "auto_backup")
+TARGET_CHAT = config.getint("Telegram", "target_chat")
+SOURCE_CHAT = config.getint("Telegram", "source_chat")
+
 WITH_FORUM = config.getboolean("Telegram", "with_forum")
+USER_TOKEN = config.get("Telegram", "user_token")
 
 client = Client("backup_bot", API_ID, API_HASH, bot_token=BOT_TOKEN)
+user_acc = None
+if WITH_FORUM and USER_TOKEN:
+    user_acc = Client("my_acc", API_ID, API_HASH, session_string=USER_TOKEN)
+elif WITH_FORUM:
+    exit("[ERROR] user_token is necessary to use forum features")
+
+auto_backup = filters.create(lambda _, __, ___: AUTO_BACKUP)
+SOURCE_CHAT = (
+    SOURCE_CHAT
+    if str(SOURCE_CHAT).startswith("-100")
+    else int("-100" + str(SOURCE_CHAT))
+)
+TARGET_CHAT = (
+    TARGET_CHAT
+    if str(TARGET_CHAT).startswith("-100")
+    else int("-100" + str(TARGET_CHAT))
+)
 
 
 @client.on_message(filters.command("start"))
@@ -53,7 +77,7 @@ async def forward_messages(client: Client, message: Message):
 
         try:
             if str(chat_id).startswith("-100"):
-                peer = int(chat_id)
+                peer = chat_id
             else:
                 peer = int("-100" + str(chat_id))
             if WITH_FORUM:
@@ -104,15 +128,26 @@ async def forward_messages(client: Client, message: Message):
                         if STOP_EVENT.is_set():
                             break
                         try:
-                            await client.forward_messages(
-                                chat_id=message.chat.id,
-                                message_ids=msg.id,
-                                from_chat_id=peer,
-                                drop_author=CLONE,
-                            )
+                            if WITH_FORUM:
+                                await handle_forum(msg, message.chat, client, peer)
+                            else:
+                                await client.forward_messages(
+                                    chat_id=message.chat.id,
+                                    message_ids=msg.id,
+                                    from_chat_id=peer,
+                                    drop_author=CLONE,
+                                )
                             batch_fwd_count += 1
+                        except ChatWriteForbidden:
+                            await status_msg.edit(
+                                "ChatWriteForbidden: Please make sure i've been given admin rights"
+                            )
+                            return
                         except Exception as e:
+                            import traceback
+
                             logging.warning(f"Could not forward message {msg.id}: {e}")
+                            traceback.print_exc()
 
                         await asyncio.sleep(delay)
 
@@ -139,12 +174,76 @@ async def forward_messages(client: Client, message: Message):
         await message.reply("Please provide valid numeric chat_id and message IDs")
 
 
+@client.on_message(
+    auto_backup & filters.incoming & filters.chat(SOURCE_CHAT) & ~filters.service
+)
+async def auto_forward_new_message(client: Client, message: Message):
+    if message.empty:
+        return
+    try:
+        if WITH_FORUM and message.is_topic_message and hasattr(message, "topic"):
+            trgt_chat = await client.get_chat(TARGET_CHAT)
+            await handle_forum(message, trgt_chat, client, SOURCE_CHAT)  # type: ignore
+        else:
+            await client.forward_messages(
+                chat_id=TARGET_CHAT,
+                message_ids=message.id,
+                from_chat_id=SOURCE_CHAT,
+                drop_author=CLONE,
+            )
+    except ChatWriteForbidden:
+        logging.warning(
+            "ChatWriteForbidden: Make sure the bot has admin rights in the target chat."
+        )
+    except Exception as e:
+        logging.error(f"Failed to auto-forward message {message.id}: {e}")
+
+
+async def handle_forum(msg: Message, trgt_chat: Chat, client: Client, peer: int):
+    topics = [
+        topic
+        async for topic in user_acc.get_forum_topics(trgt_chat.id)  # type: ignore
+    ]
+    if msg.is_topic_message and hasattr(msg, "topic"):
+        topic_title = msg.topic.title  # type: ignore
+        if not any(topic.title == topic_title for topic in topics):
+            new_topic = await client.create_forum_topic(trgt_chat.id, topic_title)
+            await client.forward_messages(
+                chat_id=trgt_chat.id,
+                message_ids=msg.id,
+                from_chat_id=peer,
+                drop_author=CLONE,
+                message_thread_id=new_topic.id,
+            )
+        else:
+            new_topic = next(topic for topic in topics if topic.title == topic_title)
+            await client.forward_messages(
+                chat_id=trgt_chat.id,
+                message_ids=msg.id,
+                from_chat_id=peer,
+                drop_author=CLONE,
+                message_thread_id=new_topic.id,
+            )
+    else:
+        await client.forward_messages(
+            chat_id=trgt_chat.id,
+            message_ids=msg.id,
+            from_chat_id=peer,
+            drop_author=CLONE,
+            message_thread_id=1,
+        )
+
+
 async def main():
     print("[INFO] Starting bot...")
     await client.start()
+    if user_acc:
+        await user_acc.start()
     print("[INFO] Bot started.")
     await STOP_EVENT.wait()
     await client.stop()
+    if user_acc:
+        await user_acc.stop()
     print("[INFO] Bot stopped.")
 
 

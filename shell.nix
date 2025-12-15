@@ -5,13 +5,13 @@
 let
   pyrogram = pkgs.python3Packages.buildPythonPackage rec {
     pname = "pyrofork";
-    version = "2.3.68";
+    version = "2.3.69";
     pyproject = true;
     build-system = [ pkgs.python3Packages.hatchling ];
 
     src = pkgs.python3Packages.fetchPypi {
       inherit pname version;
-      sha256 = "sha256-EtzHt40hebThP9vjESHZI1xL8AibyUbEft5iZH8ZIp8=";
+      sha256 = "sha256-lFsw1QsxgZqQN0mCXidIrFpq8eBzv5fajFPlEP8+1Y0=";
     };
 
     prePatch = ''

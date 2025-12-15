@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import signal
 from configparser import ConfigParser
 
@@ -14,21 +15,28 @@ logging.basicConfig(
 )
 signal.signal(signal.SIGINT, lambda _, __: STOP_EVENT.set())
 
+
+def get_bool_env(env_var, fallback):
+    env_val = os.getenv(env_var)
+    if env_val is not None:
+        return env_val.lower() in ("true", "y", "1", "yes", "on")
+    return fallback
+
+
 config = ConfigParser()
 config.read("config.ini")
 
-API_ID = int(config.get("Telegram", "api_id"))
-API_HASH = config.get("Telegram", "api_hash")
-BOT_TOKEN = config.get("Telegram", "bot_token")
-CLONE = config.getboolean("Telegram", "clone")
-BATCH_SIZE = config.getint("Telegram", "batch_size")
+CLONE = get_bool_env("CLONE", config.getboolean("Telegram", "clone"))
+AUTO_BACKUP = get_bool_env("AUTO_BACKUP", config.getboolean("Telegram", "auto_backup"))
+WITH_FORUM = get_bool_env("WITH_FORUM", config.getboolean("Telegram", "with_forum"))
 
-AUTO_BACKUP = config.getboolean("Telegram", "auto_backup")
-TARGET_CHAT = config.getint("Telegram", "target_chat")
-SOURCE_CHAT = config.getint("Telegram", "source_chat")
-
-WITH_FORUM = config.getboolean("Telegram", "with_forum")
-USER_TOKEN = config.get("Telegram", "user_token")
+API_ID = int(os.getenv("API_ID", config.get("Telegram", "api_id")))
+API_HASH = os.getenv("API_HASH", config.get("Telegram", "api_hash"))
+BOT_TOKEN = os.getenv("BOT_TOKEN", config.get("Telegram", "bot_token"))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", config.get("Telegram", "batch_size")))
+TARGET_CHAT = int(os.getenv("TARGET_CHAT", config.get("Telegram", "target_chat")))
+SOURCE_CHAT = int(os.getenv("SOURCE_CHAT", config.get("Telegram", "source_chat")))
+USER_TOKEN = os.getenv("USER_TOKEN", config.get("Telegram", "user_token"))
 
 client = Client("backup_bot", API_ID, API_HASH, bot_token=BOT_TOKEN)
 user_acc = None

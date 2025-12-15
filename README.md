@@ -61,13 +61,12 @@ Where:
 ## Requirements
 
 - Python 3.10+
-- Telethon library
+- Pyro~gram~fork
+- tgcrypto
 - ConfigParser (built-in)
 
-So basically, you just need telethon library to run this bot.
-
 ```sh
-pip install telethon
+pip install pyrofork tgcrypto
 ```
 
 ## Notes

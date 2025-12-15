@@ -28,12 +28,19 @@ A Telegram bot that helps you forward messages from one chat to another in batch
    bot_token = YOUR_BOT_TOKEN
    clone = True # Set to False to disable message cloning
    batch_size = 100 # Number of messages to forward per batch
+   ; user_token (i.e, string session) is 'must' if with_forum is True
+   with_forum = False
+   user_token =
+   ; for auto backup
+   auto_backup = False
+   source_chat =
+   target_chat =
    ```
    Message cloning means that the bot will send a copy of the message to the destination chat, preserving the original message's content, without author's tag/quote.
 
 To get your credentials:
 - Create an application at https://my.telegram.org/apps
-- Create a bot through @BotFather to get the bot token
+- Create a bot through [@BotFather](https://t.me/BotFather) to get the bot token
 
 ## Usage
 
